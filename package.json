@@ -1,0 +1,25 @@
+{
+  "name": "pickup-coord-engine",
+  "version": "0.1.0",
+  "description": "A platform-agnostic coordination engine for ride-hailing pickup optimisation",
+  "main": "dist/app.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["ride-hailing", "coordination", "geospatial", "pickup"],
+  "license": "MIT",
+  "dependencies": {
+    "fastify": "^4.28.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node-dev": "^2.0.0",
+    "@types/node": "^20.0.0"
+  }
+}
