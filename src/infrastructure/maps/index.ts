@@ -1,0 +1,1 @@
+export { fetchNearbyLandmarks } from './overpass-client'

@@ -28,3 +28,8 @@ export interface Landmark {
   createdAt: Date
   updatedAt: Date
 }
+
+export interface CandidateLandmark {
+  landmark: Landmark
+  distanceMetres: number
+}
