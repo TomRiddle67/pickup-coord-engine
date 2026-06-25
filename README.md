@@ -2,34 +2,86 @@
 
 ## What This Is
 
-Pickup Coord Engine is a platform-agnostic coordination engine for ride-hailing pickups. It helps riders and drivers meet more efficiently by detecting rider movement, identifying nearby landmarks, and recommending better pickup locations when the original pickup point becomes suboptimal. The system is designed for ride-hailing platforms, mobility providers, and developers building transportation products that need smarter pickup coordination.
+pickup-coord-engine is a coordination engine for ride-hailing platforms. Instead of treating pickup locations as fixed coordinates, it detects rider movement, discovers nearby landmarks, and recommends better pickup points that improve the likelihood of a successful meeting between rider and driver. The system is designed for ride-hailing companies, mobility platforms, and logistics providers operating in environments where riders frequently move after requesting a ride.
+
+---
 
 ## Why It Exists
 
-Most ride-hailing systems treat pickup locations as static coordinates. In reality, riders move after requesting a trip, GPS signals drift, landmarks are often easier to find than raw map pins, and drivers frequently struggle to locate passengers in crowded or complex environments. This system approaches pickup as a coordination problem rather than a navigation problem. Instead of assuming the original pickup point remains optimal, it continuously evaluates whether a better meeting point exists and helps both parties converge on it.
+Most ride-hailing systems treat pickup as a navigation problem: the rider selects a location and the driver navigates to it. In reality, pickup is often a coordination problem. Riders move after requesting rides, GPS locations can be ambiguous, and drivers frequently struggle to identify the exact meeting point. This system continuously evaluates rider movement and recommends nearby landmarks that provide clearer, safer, and more accessible pickup locations.
+
+---
 
 ## How It Works
 
 The coordination pipeline consists of four stages:
 
-**Movement Detection**
-The system evaluates incoming location samples, filters GPS noise, and determines whether meaningful rider movement has occurred.
+### 1. Movement Detection
 
-**Landmark Discovery**
-When movement exceeds a configurable threshold, nearby landmarks are discovered using geospatial search.
+The system receives location updates and determines whether meaningful rider movement has occurred.
 
-**Scoring**
-Candidate landmarks are ranked based on factors such as proximity, accessibility, and visibility. Unsuitable locations are filtered out before ranking.
+Responsibilities:
 
-**Coordination**
-Top-ranked suggestions are presented to the rider. Accepted suggestions become the active pickup target and are communicated to the driver through the coordination workflow.
+* GPS accuracy filtering
+* Drift detection
+* Distance calculation using the Haversine formula
+* Movement classification
+* Confidence scoring
+* Freshness evaluation
+
+Output:
+
+* MovementEvent
+
+### 2. Landmark Discovery
+
+When meaningful movement is detected, the system discovers nearby landmarks using OpenStreetMap data through the Overpass API.
+
+Responsibilities:
+
+* Query nearby landmarks
+* Map OSM entities into domain landmarks
+* Filter candidate landmarks
+
+Output:
+
+* Candidate landmarks near the rider's current position
+
+### 3. Scoring Engine
+
+Candidate landmarks are ranked according to pickup suitability.
+
+Signals:
+
+* Proximity
+* Accessibility
+* Visibility
+
+Illegal stopping locations are removed before scoring.
+
+Output:
+
+* Ranked pickup suggestions
+
+### 4. Coordination
+
+The PickupCoordinatorService orchestrates the workflow:
+
+Movement Detection → Landmark Discovery → Scoring → Persistence
+
+The coordinator updates trip state, stores movement history, persists suggestion sets, and returns suggestions to the API layer.
+
+This pipeline has been successfully executed end-to-end against live OpenStreetMap data through real HTTP requests.
+
+---
 
 ## State Machine
 
 The coordination workflow is modeled as an explicit state machine.
+
 Every API endpoint corresponds to a state transition.
 
-```
+```text
 TRIP_ACTIVE
       ↓
 MOVEMENT_DETECTED
@@ -45,15 +97,75 @@ COORDINATION_ACTIVE
 PICKUP_SUCCESS
 ```
 
-Terminal states: `SUGGESTION_EXPIRED`, `DRIVER_DECLINED`, `TRIP_CANCELLED`
+Terminal states:
+
+```text
+SUGGESTION_EXPIRED
+DRIVER_DECLINED
+TRIP_CANCELLED
+```
+
+---
+
+## API Endpoints
+
+### Health Check
+
+```http
+GET /health
+```
+
+Returns service health status.
+
+---
+
+### Create Trip
+
+```http
+POST /v1/trips
+```
+
+Creates a new trip and initializes the coordination workflow.
+
+---
+
+### Get Trip
+
+```http
+GET /v1/trips/:tripId
+```
+
+Retrieves the current state of a trip.
+
+---
+
+### Submit Location Update
+
+```http
+POST /v1/trips/:tripId/locations
+```
+
+Processes rider movement and may generate pickup suggestions.
+
+---
+
+### Accept Suggestion
+
+```http
+POST /v1/trips/:tripId/suggestions/:suggestionId/accept
+```
+
+Accepts a generated pickup suggestion.
+
+---
 
 ## Architecture
 
-The project follows a layered architecture with clear separation of responsibilities.
+The project follows a layered architecture with dependency inversion.
 
 ### Domain
 
-Pure business concepts and data structures.
+Pure business concepts.
 
 Examples:
 
@@ -63,21 +175,25 @@ Examples:
 * MovementEvent
 * PickupSuggestion
 
-The domain layer contains no infrastructure concerns.
+Domain types contain no infrastructure concerns.
+
+---
 
 ### Application
 
-Workflow orchestration and use cases.
+Workflow orchestration.
 
 Examples:
 
 * PickupCoordinatorService
 
-The application layer coordinates business operations but does not contain external integrations.
+The application layer coordinates use cases and state transitions.
+
+---
 
 ### Services
 
-Pure business logic modules.
+Pure business logic.
 
 Examples:
 
@@ -85,101 +201,151 @@ Examples:
 * Landmark Discovery
 * Scoring Engine
 
-Services perform calculations and decision-making without owning persistence or transport concerns.
+Services contain no persistence or HTTP concerns.
+
+---
 
 ### Infrastructure
 
-External system integrations and adapters.
+External dependencies and adapters.
 
 Examples:
 
-* OpenStreetMap / Overpass API integration
+* Overpass API client
 * Repository implementations
-* Database adapters (planned)
 
 Infrastructure can be replaced without changing business logic.
 
-### API (Coming)
+---
 
-The API layer will expose the coordination engine through:
+### API
 
-* REST endpoints for commands and state transitions
-* WebSocket events for real-time coordination updates
+REST interface exposing coordination functionality.
+
+Current implementation:
+
+* Fastify routes
+* Request handling
+* Response envelopes
+
+WebSocket support is planned next.
+
+---
 
 ## Current Status
 
 ### Completed
 
-* Project structure and TypeScript configuration
-* Core domain models
-* Movement detection module
+* Project structure
+* TypeScript setup
+* Domain model
+* Movement detection engine
 * GPS filtering and drift detection
-* Landmark discovery integration design
-* Scoring engine and ranking pipeline
-* Repository abstraction layer
+* Confidence and freshness evaluation
+* OpenStreetMap integration
+* Overpass API client
+* Landmark discovery service
+* Scoring engine
+* Pickup suggestion ranking
+* Trip state machine
+* Repository abstraction
 * In-memory repository implementation
-* PickupCoordinatorService foundation
-* State-machine-driven workflow design
+* PickupCoordinatorService
+* Dependency injection via composition root
+* Fastify REST API
+* Health endpoint
+* Trip creation endpoint
+* Trip retrieval endpoint
+* Location submission endpoint
+* Suggestion acceptance endpoint
+* Standardized API response envelopes
+* End-to-end workflow execution
+* Live OpenStreetMap landmark discovery
+* Suggestion generation against real-world data
 
 ### Remaining
 
-* REST API surface
-* WebSocket coordination layer
-* PostgreSQL integration
-* PostGIS geospatial queries
-* Redis and background job processing
+* Docker environment
+* PostgreSQL persistence
+* Database migrations
+* Redis integration
+* Background jobs
+* WebSocket layer
 * Authentication and authorization
-* Driver coordination workflow
-* Production persistence
-* Automated testing
-* Docker-based local environment
+* JSON Schema validation for routes
+* LandmarkProvider abstraction
+* Production configuration management
+* Observability and metrics
+* Integration test suite
+
+Docker, PostgreSQL, and Redis were intentionally deferred due to local environment issues during development. The architecture already supports replacing the in-memory repository with a database-backed implementation.
+
+---
+
+## Known Limitations
+
+### In-Memory Persistence
+
+The current repository implementation stores trips in memory.
+
+Consequences:
+
+* Data is lost when the server restarts
+* Multiple server instances cannot share state
+* Not suitable for production workloads
+
+This limitation is intentional during early development and will be replaced by PostgreSQL.
+
+---
+
+### OpenStreetMap Data Quality
+
+Landmark quality depends on available OpenStreetMap data.
+
+Some regions may contain:
+
+* Missing landmarks
+* Unnamed landmarks
+* Incomplete metadata
+
+The scoring engine currently works with available OSM data and will evolve as additional landmark providers are introduced.
+
+---
 
 ## Tech Stack
 
-**Node.js 20 + TypeScript**
-Modern runtime with strong type safety and excellent developer experience.
+### TypeScript
 
-**Fastify**
-High-performance web framework with built-in schema validation and TypeScript support.
+Strong typing and explicit domain modeling.
 
-**PostgreSQL + PostGIS**
-Reliable relational database with powerful geospatial capabilities.
+### Node.js
 
-**Kysely**
-Type-safe query builder and migration system without the complexity of a full ORM.
+Modern JavaScript runtime with native support for current language features.
 
-**Redis**
-Fast in-memory storage for caching, expiry handling, and coordination state.
+### Fastify
 
-**BullMQ**
-Background job processing built on Redis.
+High-performance HTTP framework with excellent TypeScript support.
 
-**Socket.IO**
-Real-time communication between riders, drivers, and the coordination engine.
+### OpenStreetMap + Overpass API
 
-**OpenStreetMap + Overpass API**
-Open geospatial data source for landmark discovery without vendor lock-in.
+Open geographic data source for landmark discovery.
 
-**Docker Compose**
-Consistent local development and deployment environment.
+### Repository Pattern
+
+Provides persistence abstraction and enables infrastructure replacement without changing business logic.
+
+### Dependency Injection
+
+Keeps application services independent of implementation details.
+
+---
 
 ## Getting Started
-
-### Prerequisites
-
-* Node.js 20+
-* npm
 
 ### Install Dependencies
 
 ```bash
 npm install
-```
-
-### Run Type Checking
-
-```bash
-npm run typecheck
 ```
 
 ### Start Development Server
@@ -188,25 +354,88 @@ npm run typecheck
 npm run dev
 ```
 
-### Verify Health Endpoint
+The service starts on:
+
+```text
+http://localhost:3000
+```
+
+---
+
+## Verify the Full Pipeline
+
+### 1. Health Check
 
 ```bash
 curl http://localhost:3000/health
 ```
 
-Expected response:
+### 2. Create a Trip
+
+```bash
+curl -X POST http://localhost:3000/v1/trips \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tripId": "trip_001",
+    "riderId": "rider_001",
+    "driverId": "driver_001",
+    "originalPickupLocation": {
+      "latitude": 9.0571,
+      "longitude": 7.4956,
+      "timestamp": "2026-06-25T10:00:00Z",
+      "accuracyMetres": 8,
+      "source": "GPS"
+    }
+  }'
+```
+
+### 3. Submit Movement
+
+```bash
+curl -X POST http://localhost:3000/v1/trips/trip_001/locations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "previousLocation": {
+      "latitude": 9.0571,
+      "longitude": 7.4956,
+      "timestamp": "2026-06-25T10:00:00Z",
+      "accuracyMetres": 8,
+      "source": "GPS",
+      "speedMetresPerSecond": 1.2
+    },
+    "currentLocation": {
+      "latitude": 9.0578,
+      "longitude": 7.4962,
+      "timestamp": "2026-06-25T10:00:20Z",
+      "accuracyMetres": 8,
+      "source": "GPS",
+      "speedMetresPerSecond": 1.2
+    },
+    "driverEtaSeconds": 180
+  }'
+```
+
+Expected outcome:
 
 ```json
 {
-  "status": "ok",
-  "service": "pickup-coord-engine"
+  "success": true,
+  "data": {
+    "outcome": "SUGGESTIONS_GENERATED"
+  }
 }
 ```
 
+This confirms the complete workflow is functioning:
+
+Movement Detection → Landmark Discovery → Scoring → Coordination
+
+---
+
 ## Contributing
 
-This project is built around a few core design principles.
-
-Business workflows are modeled explicitly as state transitions rather than generic CRUD operations. Domain logic should remain independent of infrastructure concerns. Services should be deterministic and testable wherever possible. External systems should be accessed through abstractions and adapters so implementations remain swappable. Human decisions enter the system through commands, while system decisions emerge from events.
+This project prioritizes explicit domain modeling, clear architectural boundaries, and deterministic business logic.
 
 Business logic never imports from infrastructure. Infrastructure never contains business rules. If you find yourself doing either, the abstraction boundary needs to move, not the code.
+
+Interfaces model domain entities. Types model states, categories, and constraints. Prefer simple, understandable code over unnecessary abstraction, but preserve architectural boundaries even when they appear inconvenient. The coordinator orchestrates workflows, services produce facts, and infrastructure adapts external systems.
