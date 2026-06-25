@@ -14,14 +14,23 @@ export async function discoverLandmarks(
   radiusMetres: number = DEFAULT_SEARCH_RADIUS_METRES
 ): Promise<CandidateLandmark[]> {
   try {
+  
     const landmarks = await fetchNearbyLandmarks(
       location.latitude,
       location.longitude,
       radiusMetres
     )
 
-    return landmarks
-      .filter(landmark => landmark.name !== 'Unnamed Landmark')
+  const usable = landmarks.map(landmark => ({
+  ...landmark,
+  name: landmark.name === 'Unnamed Landmark'
+    ? `${landmark.type.replace(/_/g, ' ')} (unnamed)`
+    : landmark.name,
+}))
+
+console.log(`[landmark-discovery] ${usable.length} usable after fallback naming`)
+
+    return usable
       .map(landmark => ({
         landmark,
         distanceMetres: calculateDistance(
@@ -33,7 +42,7 @@ export async function discoverLandmarks(
       .slice(0, MAX_CANDIDATES)
 
   } catch (error) {
-    console.error('Landmark discovery failed, returning empty set:', error)
+    console.error('[landmark-discovery] Failed, returning empty set:', error)
     return []
   }
 }

@@ -3,7 +3,6 @@ import { Location } from '../../domain/location/types'
 import { MovementEvent } from '../../domain/movement/types'
 import { isLocationTrusted, isLikelyDrift } from './filters'
 
-
 const MOVEMENT_THRESHOLD_METRES = 50
 const MIN_CONFIDENCE_TO_TRIGGER = 0.6
 
@@ -25,17 +24,26 @@ export function calculateDistance(a: Location, b: Location): number {
   return R * c
 }
 
+/**
+ * Freshness answers: "how useful is this observation right now?"
+ * It is independent of whether the movement is believed to be real.
+ */
+export function calculateFreshness(timeDeltaSeconds: number): number {
+  if (timeDeltaSeconds <= 0) return 0.5
+  if (timeDeltaSeconds <= 10) return 1
+  return Math.max(0.2, 1 - (timeDeltaSeconds - 10) / 120)
+}
+
+/**
+ * Confidence answers: "do we believe this movement actually happened?"
+ * Driven by evidence quality only: accuracy and speed consistency.
+ * Deliberately excludes time gap — see calculateFreshness for that.
+ */
 export function calculateConfidence(
-  previous: Location,
-  current: Location,
-  distanceMetres: number
+  current: Location
 ): number {
   const accuracyFactor =
     1 - Math.min(current.accuracyMetres / 100, 1)
-
-  const timeDeltaSeconds =
-    (current.timestamp.getTime() - previous.timestamp.getTime()) / 1000
-  const timeFactor = timeDeltaSeconds > 0 && timeDeltaSeconds < 30 ? 1 : 0.5
 
   const speedFactor =
     current.speedMetresPerSecond !== undefined &&
@@ -43,7 +51,7 @@ export function calculateConfidence(
       ? 1
       : 0.7
 
-  return Math.min(accuracyFactor * timeFactor * speedFactor, 1)
+  return Math.min(accuracyFactor * speedFactor, 1)
 }
 
 export function evaluateMovement(
@@ -57,21 +65,23 @@ export function evaluateMovement(
 
   if (isLikelyDrift(previous, current, distanceMetres)) return null
 
-  const confidenceScore = calculateConfidence(previous, current, distanceMetres)
+  const confidenceScore = calculateConfidence(current)
 
   if (confidenceScore < MIN_CONFIDENCE_TO_TRIGGER) return null
 
   const timeIntervalSeconds =
     (current.timestamp.getTime() - previous.timestamp.getTime()) / 1000
 
+  const freshnessScore = calculateFreshness(timeIntervalSeconds)
+
   const speedMetresPerSecond =
     timeIntervalSeconds > 0 ? distanceMetres / timeIntervalSeconds : 0
 
   const movementType =
-  speedMetresPerSecond < 0.5 ? 'STATIC'
-  : speedMetresPerSecond < 3 ? 'WALKING'
-  : speedMetresPerSecond < 15 ? 'DRIVING'
-  : 'UNKNOWN'
+    speedMetresPerSecond < 0.5 ? 'STATIC'
+    : speedMetresPerSecond < 3 ? 'WALKING'
+    : speedMetresPerSecond < 15 ? 'DRIVING'
+    : 'UNKNOWN'
 
   const thresholdTriggered = distanceMetres >= MOVEMENT_THRESHOLD_METRES
 
@@ -84,6 +94,7 @@ export function evaluateMovement(
     timeIntervalSeconds,
     movementType,
     confidenceScore,
+    freshnessScore,
     thresholdTriggered,
     timestamp: new Date()
   }

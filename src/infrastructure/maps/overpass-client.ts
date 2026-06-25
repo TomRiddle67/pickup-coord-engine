@@ -108,11 +108,15 @@ export async function fetchNearbyLandmarks(
 ): Promise<Landmark[]> {
   const query = buildOverpassQuery(latitude, longitude, radiusMetres)
 
-  const response = await fetch(OVERPASS_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  })
+ const response = await fetch(OVERPASS_API_URL, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json',
+    'User-Agent': 'pickup-coord-engine/0.1.0 (open-source coordination engine)',
+  },
+  body: `data=${encodeURIComponent(query)}`,
+})
 
   if (!response.ok) {
     throw new Error(`Overpass API error: ${response.status}`)
